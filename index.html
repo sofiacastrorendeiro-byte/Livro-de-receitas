@@ -332,9 +332,13 @@ function App(){
     <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:"#f5f5f0"}}>
       <div style={hdr}>
         <h1 style={{fontSize:20,fontWeight:600}}>{T.title}</h1>
-        <div style={{display:"flex",gap:6}}>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <button style={langBtn(lang==="pt")} onClick={()=>setLang("pt")}>PT</button>
           <button style={langBtn(lang==="en")} onClick={()=>setLang("en")}>EN</button>
+          <button onClick={()=>setShowAdd(true)}
+            style={{width:34,height:34,borderRadius:17,background:"#7F77DD",border:"none",color:"#fff",fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+            +
+          </button>
         </div>
       </div>
       <div style={{padding:"0 16px 8px"}}>
@@ -353,7 +357,7 @@ function App(){
       <div style={{padding:"0 16px 10px",textAlign:"right"}}>
         <button onClick={()=>setShowManageTags(true)} style={{fontSize:13,color:"#7F77DD",background:"none",border:"0.5px solid #7F77DD66",borderRadius:8,padding:"4px 12px",cursor:"pointer"}}>⚙ {T.manageTagsTitle}</button>
       </div>
-      <div style={{padding:"0 16px 100px"}}>
+      <div style={{padding:"0 16px 32px"}}>
         {filtered.length===0&&<p style={{textAlign:"center",color:"#888",marginTop:40}}>{recipes.length===0?T.noRecipes:T.noResults}</p>}
         {filtered.map(r=>{
           const lastDate=r.cookDates&&r.cookDates.length?r.cookDates[r.cookDates.length-1]:null;
@@ -372,12 +376,6 @@ function App(){
             </div>
           );
         })}
-      </div>
-      <div style={{display:"flex",justifyContent:"center",padding:"16px 0 32px"}}>
-        <button onClick={()=>setShowAdd(true)}
-          style={{width:54,height:54,borderRadius:27,background:"#7F77DD",border:"none",color:"#fff",fontSize:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          +
-        </button>
       </div>
     </div>
   );
