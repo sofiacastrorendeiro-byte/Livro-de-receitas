@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="Receitas"/>
+<title>O Meu Livro de Receitas</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a1a;min-height:100vh}
+  input,textarea{width:100%;padding:9px 12px;border:0.5px solid #ccc;border-radius:8px;font-size:15px;font-family:inherit;background:#fff;color:#1a1a1a;outline:none}
+  input:focus,textarea:focus{border-color:#7F77DD}
+  button{font-family:inherit;cursor:pointer}
+  a{color:#D85A30;text-decoration:none}
+  :root{--purple:#7F77DD;--green:#1D9E75;--coral:#D85A30}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script type="text/babel">
+const{useState,useEffect}=React;
+
+const SUPABASE_URL = "https://cldwowbjddbkdqnfqzft.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_RMC76_8hq41ESdn3lgS7LQ_AstWJytW";
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const fromDB = r => ({
+  id: r.id,
+  name: r.name,
+  youtubeId: r.youtube_id,
+  tags: r.tags || [],
+  cookCount: r.cook_count || 0,
+  cookDates: r.cook_dates || [],
+  note: r.note || "",
+  createdAt: r.created_at
+});
+
+const toDB = r => ({
+  name: r.name,
+  youtube_id: r.youtubeId || null,
+  tags: r.tags || [],
+  cook_count: r.cookCount || 0,
+  cook_dates: r.cookDates || [],
+  note: r.note || ""
+});
+
+
+const LANGS={
+  en:{title:"My Recipe Book",addRecipe:"Add Recipe",searchPlaceholder:"Search recipes…",allTags:"All",cookCount:n=>`Cooked ${n}×`,lastCooked:"Last cooked",never:"Never cooked",iCookedThis:"I cooked this!",watchVideo:"Watch video",back:"Back",save:"Save",cancel:"Cancel",deleteRecipe:"Delete recipe",confirmDelete:"Delete this recipe?",yes:"Yes, delete",no:"Cancel",addTitle:"Add New Recipe",editTitle:"Edit Recipe",youtubeUrl:"YouTube URL",fetchInfo:"Fetch info",fetching:"Fetching…",recipeName:"Recipe name",tags:"Tags",newTag:"New tag…",addTag:"Add",noRecipes:"No recipes yet. Add your first one!",noResults:"No recipes match your search.",manageTagsTitle:"Manage Tags",cookHistory:"Cook history",enterUrl:"Paste a YouTube URL to fetch details automatically.",notePlaceholder:"Optional notes…",rename:"Rename",note:"Notes"},
+  pt:{title:"O Meu Livro de Receitas",addRecipe:"Adicionar Receita",searchPlaceholder:"Pesquisar receitas…",allTags:"Todas",cookCount:n=>`Cozinhei ${n}×`,lastCooked:"Última vez",never:"Ainda não cozinhei",iCookedThis:"Cozinhei isto!",watchVideo:"Ver vídeo",back:"Voltar",save:"Guardar",cancel:"Cancelar",deleteRecipe:"Eliminar receita",confirmDelete:"Eliminar esta receita?",yes:"Sim, eliminar",no:"Cancelar",addTitle:"Nova Receita",editTitle:"Editar Receita",youtubeUrl:"URL do YouTube",fetchInfo:"Obter info",fetching:"A obter…",recipeName:"Nome da receita",tags:"Etiquetas",newTag:"Nova etiqueta…",addTag:"Adicionar",noRecipes:"Sem receitas. Adiciona a primeira!",noResults:"Nenhuma receita encontrada.",manageTagsTitle:"Gerir Etiquetas",cookHistory:"Histórico de cozinha",enterUrl:"Cola um URL do YouTube para obter os detalhes automaticamente.",notePlaceholder:"Notas opcionais…",rename:"Renomear",note:"Notas"},
+};
+
+const YT_ID=url=>{const m=url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{11})/);return m?m[1]:null};
+const YT_THUMB=id=>`https://img.youtube.com/vi/${id}/mqdefault.jpg`;
+const YT_LINK=id=>`https://www.youtube.com/watch?v=${id}`;
+const fmt=iso=>{if(!iso)return null;return new Date(iso).toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"})};
+
+const COLORS=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD","#639922","#BA7517","#E24B4A","#888780"];
+const tagColor=(tag,all)=>COLORS[all.indexOf(tag)%COLORS.length];
+
+const TagPill=({label,color,onRemove,small})=>(
+  <span style={{display:"inline-flex",alignItems:"center",gap:4,background:color+"22",color,border:`0.5px solid ${color}66`,borderRadius:20,padding:small?"2px 8px":"3px 10px",fontSize:small?11:12,fontWeight:500,whiteSpace:"nowrap"}}>
+    {label}
+    {onRemove&&<span onClick={onRemove} style={{cursor:"pointer",fontSize:14,lineHeight:1,opacity:0.7}}>×</span>}
+  </span>
+);
+
+const SAMPLE=[
+  {id:"1",name:"Bacalhau à Brás",youtubeId:null,tags:["peixe","tradicional"],cookCount:3,cookDates:["2024-11-10","2025-01-05","2025-03-22"],note:""},
+  {id:"2",name:"Pastel de Nata",youtubeId:null,tags:["sobremesa","fácil"],cookCount:5,cookDates:["2024-09-01","2024-10-15","2024-11-20","2025-01-30","2025-04-10"],note:""},
+];
+const SAMPLE_TAGS=["peixe","tradicional","sobremesa","fácil","vegetariano","rápido"];
+
+function App(){
+  const[lang,setLang]=useState(()=>localStorage.getItem("rcb_lang")||"pt");
+  const T=LANGS[lang];
+  const[recipes,setRecipes]=useState([]);
+  const[allTags,setAllTags]=useState(SAMPLE_TAGS);
+  const[loading,setLoading]=useState(true);
+  const[search,setSearch]=useState("");
+  const[filterTag,setFilterTag]=useState(null);
+  const[view,setView]=useState("list");
+  const[selected,setSelected]=useState(null);
+  const[showAdd,setShowAdd]=useState(false);
+  const[editRecipe,setEditRecipe]=useState(null);
+  const[showConfirmDelete,setShowConfirmDelete]=useState(false);
+  const[showManageTags,setShowManageTags]=useState(false);
+  const[renameTag,setRenameTag]=useState(null);
+  const[renameVal,setRenameVal]=useState("");
+
+  useEffect(()=>{localStorage.setItem("rcb_lang",lang)},[lang]);
+
+  useEffect(()=>{loadRecipes()},[]);
+
+  const loadRecipes=async()=>{
+    setLoading(true);
+    const {data,error}=await supabaseClient
+      .from("recipes")
+      .select("*")
+      .order("created_at",{ascending:false});
+
+    if(error){
+      alert("Erro ao carregar receitas: "+error.message);
+      setRecipes([]);
+      setLoading(false);
+      return;
+    }
+
+    const loaded=(data||[]).map(fromDB);
+    setRecipes(loaded);
+    const tags=[...new Set([...SAMPLE_TAGS,...loaded.flatMap(r=>r.tags||[])])];
+    setAllTags(tags);
+    setLoading(false);
+  };
+
+  const filtered=recipes.filter(r=>{
+    const ms=r.name.toLowerCase().includes(search.toLowerCase());
+    const mt=!filterTag||r.tags.includes(filterTag);
+    return ms&&mt;
+  }).sort((a,b)=>b.cookCount-a.cookCount);
+
+  const logCook=async id=>{
+    const today=new Date().toISOString().split("T")[0];
+    const current=recipes.find(r=>r.id===id);
+    if(!current)return;
+
+    const updated={...current,cookCount:(current.cookCount||0)+1,cookDates:[...(current.cookDates||[]),today]};
+    setRecipes(rs=>rs.map(r=>r.id===id?updated:r));
+    setSelected(prev=>prev&&prev.id===id?updated:prev);
+
+    const {error}=await supabaseClient
+      .from("recipes")
+      .update({cook_count:updated.cookCount,cook_dates:updated.cookDates})
+      .eq("id",id);
+
+    if(error){
+      alert("Erro ao guardar: "+error.message);
+      loadRecipes();
+    }
+  };
+
+  const deleteRecipe=async id=>{
+    const {error}=await supabaseClient.from("recipes").delete().eq("id",id);
+    if(error){alert("Erro ao eliminar: "+error.message);return;}
+    setRecipes(rs=>rs.filter(r=>r.id!==id));
+    setView("list");setSelected(null);setShowConfirmDelete(false);
+  };
+
+  const saveRecipe=async recipe=>{
+    if(recipe.id){
+      const {data,error}=await supabaseClient
+        .from("recipes")
+        .update(toDB(recipe))
+        .eq("id",recipe.id)
+        .select()
+        .single();
+
+      if(error){alert("Erro ao guardar: "+error.message);return;}
+      const saved=fromDB(data);
+      setRecipes(rs=>rs.map(r=>r.id===saved.id?saved:r));
+      setSelected(saved);
+    }
+    else{
+      const n={...recipe,cookCount:0,cookDates:[]};
+      const {data,error}=await supabaseClient
+        .from("recipes")
+        .insert(toDB(n))
+        .select()
+        .single();
+
+      if(error){alert("Erro ao guardar: "+error.message);return;}
+      const saved=fromDB(data);
+      setRecipes(rs=>[saved,...rs]);
+    }
+
+    const tags=[...new Set([...allTags,...recipe.tags])];
+    setAllTags(tags);
+    setShowAdd(false);setEditRecipe(null);
+  };
+
+  const addGlobalTag=tag=>{if(tag&&!allTags.includes(tag))setAllTags(t=>[...t,tag])};
+
+  const removeGlobalTag=async tag=>{
+    const updated=recipes.map(r=>({...r,tags:(r.tags||[]).filter(x=>x!==tag)}));
+    setAllTags(t=>t.filter(x=>x!==tag));
+    setRecipes(updated);
+
+    for(const r of updated.filter(r=>recipes.find(o=>o.id===r.id)?.tags?.includes(tag))){
+      await supabaseClient.from("recipes").update({tags:r.tags}).eq("id",r.id);
+    }
+  };
+
+  const doRename=async (old,nw)=>{
+    if(!nw||nw===old){setRenameTag(null);return}
+    const updated=recipes.map(r=>({...r,tags:(r.tags||[]).map(x=>x===old?nw:x)}));
+    setAllTags(t=>t.map(x=>x===old?nw:x));
+    setRecipes(updated);
+    setRenameTag(null);
+
+    for(const r of updated.filter(r=>recipes.find(o=>o.id===r.id)?.tags?.includes(old))){
+      await supabaseClient.from("recipes").update({tags:r.tags}).eq("id",r.id);
+    }
+  };
+  const dragTag=React.useRef(null);
+  const dragOverTag=React.useRef(null);
+  const handleDragEnd=()=>{
+    const arr=[...allTags];
+    const dragged=arr.splice(dragTag.current,1)[0];
+    arr.splice(dragOverTag.current,0,dragged);
+    setAllTags(arr);
+    dragTag.current=null;dragOverTag.current=null;
+  };
+
+  const hdr={display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top, 16px) 16px 8px",paddingTop:"max(env(safe-area-inset-top),16px)"};
+  const card={background:"#fff",border:"0.5px solid #e0e0d8",borderRadius:14,padding:"12px 14px",marginBottom:10,cursor:"pointer",display:"flex",gap:12,alignItems:"flex-start"};
+  const btn=(v)=>({padding:"9px 18px",borderRadius:8,border:`0.5px solid #ccc`,background:v==="primary"?"#7F77DD":v==="danger"?"#E24B4A":"transparent",color:v==="primary"||v==="danger"?"#fff":"#1a1a1a",fontSize:14,fontWeight:500,cursor:"pointer"});
+  const langBtn=(a)=>({padding:"3px 10px",borderRadius:20,border:"0.5px solid #ccc",background:a?"#eeeef8":"transparent",fontSize:12,cursor:"pointer",color:"#1a1a1a",fontWeight:a?500:400});
+
+  if(loading)return(
+    <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:"#f5f5f0",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"#666"}}>
+      A carregar receitas…
+    </div>
+  );
+
+  if(showManageTags)return(
+    <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:"#f5f5f0"}}>
+      <div style={hdr}>
+        <button onClick={()=>setShowManageTags(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#7F77DD",padding:0}}>← {T.back}</button>
+        <span style={{fontSize:18,fontWeight:500}}>{T.manageTagsTitle}</span>
+        <div style={{width:60}}/>
+      </div>
+      <div style={{padding:"0 16px"}}>
+        {allTags.map((tag,i)=>(
+          <div key={tag} draggable
+            onDragStart={()=>dragTag.current=i}
+            onDragEnter={()=>dragOverTag.current=i}
+            onDragEnd={handleDragEnd}
+            onDragOver={e=>e.preventDefault()}
+            style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:"0.5px solid #e0e0d8",cursor:"grab"}}>
+            <span style={{fontSize:18,color:"#bbb",paddingRight:4}}>☰</span>
+            {renameTag===tag?(
+              <>
+                <input value={renameVal} onChange={e=>setRenameVal(e.target.value)} style={{flex:1}} autoFocus onKeyDown={e=>e.key==="Enter"&&doRename(tag,renameVal)}/>
+                <button style={{...btn("primary"),padding:"6px 12px",fontSize:13}} onClick={()=>doRename(tag,renameVal)}>{T.save}</button>
+                <button style={{...btn(),padding:"6px 12px",fontSize:13}} onClick={()=>setRenameTag(null)}>{T.cancel}</button>
+              </>
+            ):(
+              <>
+                <TagPill label={tag} color={tagColor(tag,allTags)}/>
+                <span style={{flex:1,fontSize:13,color:"#666"}}>{recipes.filter(r=>r.tags.includes(tag)).length} rec.</span>
+                <button style={{...btn(),padding:"4px 10px",fontSize:12}} onClick={()=>{setRenameTag(tag);setRenameVal(tag)}}>{T.rename}</button>
+                <button style={{...btn("danger"),padding:"4px 10px",fontSize:12}} onClick={()=>removeGlobalTag(tag)}>×</button>
+              </>
+            )}
+          </div>
+        ))}
+        <AddTagInline allTags={allTags} onAdd={addGlobalTag} T={T}/>
+      </div>
+    </div>
+  );
+
+  if(showAdd||editRecipe)return(
+    <AddEditForm T={T} allTags={allTags} addGlobalTag={addGlobalTag} initial={editRecipe}
+      onSave={saveRecipe} onCancel={()=>{setShowAdd(false);setEditRecipe(null)}}
+      tagColor={t=>tagColor(t,allTags)}/>
+  );
+
+  if(view==="detail"&&selected){
+    const r=recipes.find(x=>x.id===selected.id)||selected;
+    const lastDate=r.cookDates&&r.cookDates.length?r.cookDates[r.cookDates.length-1]:null;
+    return(
+      <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:"#f5f5f0"}}>
+        <div style={hdr}>
+          <button onClick={()=>setView("list")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#7F77DD",padding:0}}>← {T.back}</button>
+          <div style={{display:"flex",gap:8}}>
+            <button style={{...btn(),padding:"4px 12px",fontSize:13}} onClick={()=>setEditRecipe(r)}>✎ {T.save.includes("uar")?"Editar":"Edit"}</button>
+            <button style={{...btn("danger"),padding:"4px 12px",fontSize:13}} onClick={()=>setShowConfirmDelete(true)}>🗑</button>
+          </div>
+        </div>
+        <div style={{padding:"0 16px 80px"}}>
+          {r.youtubeId?(
+            <img src={YT_THUMB(r.youtubeId)} alt={r.name} style={{width:"100%",borderRadius:10,objectFit:"cover",maxHeight:200}}/>
+          ):(
+            <div style={{width:"100%",height:120,borderRadius:10,background:"#e8e8e0",display:"flex",alignItems:"center",justifyContent:"center",fontSize:48}}>🍽️</div>
+          )}
+          <h2 style={{fontSize:22,fontWeight:600,margin:"12px 0 6px"}}>{r.name}</h2>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{r.tags.map(t=><TagPill key={t} label={t} color={tagColor(t,allTags)}/>)}</div>
+          {r.note&&<p style={{fontSize:14,color:"#666",marginBottom:12}}>{r.note}</p>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,margin:"12px 0"}}>
+            <div style={{background:"#fff",borderRadius:10,padding:"10px 14px",border:"0.5px solid #e0e0d8"}}>
+              <div style={{fontSize:12,color:"#888"}}>Total</div>
+              <div style={{fontSize:26,fontWeight:600,color:"#7F77DD"}}>{r.cookCount}×</div>
+            </div>
+            <div style={{background:"#fff",borderRadius:10,padding:"10px 14px",border:"0.5px solid #e0e0d8"}}>
+              <div style={{fontSize:12,color:"#888"}}>{T.lastCooked}</div>
+              <div style={{fontSize:14,fontWeight:500}}>{lastDate?fmt(lastDate):T.never}</div>
+            </div>
+          </div>
+          <button onClick={()=>logCook(r.id)} style={{width:"100%",padding:"14px",borderRadius:12,background:"#1D9E75",border:"none",color:"#fff",fontSize:16,fontWeight:600,cursor:"pointer",marginBottom:10}}>✓ {T.iCookedThis}</button>
+          {r.youtubeId&&<a href={YT_LINK(r.youtubeId)} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:10,fontSize:15,fontWeight:500,color:"#fff",background:"#D85A30",borderRadius:10,padding:"12px",textDecoration:"none"}}>▶ {T.watchVideo}</a>}
+          {r.cookDates&&r.cookDates.length>0&&(
+            <>
+              <div style={{fontSize:12,color:"#888",textTransform:"uppercase",letterSpacing:0.5,margin:"16px 0 6px"}}>{T.cookHistory}</div>
+              {[...r.cookDates].reverse().slice(0,15).map((d,i)=>(
+                <div key={i} style={{fontSize:13,color:"#666",padding:"5px 0",borderBottom:"0.5px solid #e0e0d8"}}>{fmt(d)}</div>
+              ))}
+            </>
+          )}
+        </div>
+        {showConfirmDelete&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>
+            <div style={{background:"#fff",borderRadius:16,padding:24,width:280,textAlign:"center"}}>
+              <p style={{fontSize:16,fontWeight:500,marginBottom:20}}>{T.confirmDelete}</p>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <button style={{...btn("danger"),width:"100%"}} onClick={()=>deleteRecipe(r.id)}>{T.yes}</button>
+                <button style={{...btn(),width:"100%"}} onClick={()=>setShowConfirmDelete(false)}>{T.no}</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return(
+    <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:"#f5f5f0"}}>
+      <div style={hdr}>
+        <h1 style={{fontSize:20,fontWeight:600}}>{T.title}</h1>
+        <div style={{display:"flex",gap:6}}>
+          <button style={langBtn(lang==="pt")} onClick={()=>setLang("pt")}>PT</button>
+          <button style={langBtn(lang==="en")} onClick={()=>setLang("en")}>EN</button>
+        </div>
+      </div>
+      <div style={{padding:"0 16px 8px"}}>
+        <input placeholder={T.searchPlaceholder} value={search} onChange={e=>setSearch(e.target.value)}/>
+      </div>
+      <div style={{padding:"0 16px 6px",display:"flex",gap:6,flexWrap:"wrap"}}>
+        <button onClick={()=>setFilterTag(null)} style={{...langBtn(!filterTag),whiteSpace:"nowrap"}}>{T.allTags}</button>
+        {allTags.map(t=>(
+          <button key={t} onClick={()=>setFilterTag(filterTag===t?null:t)}
+            style={{padding:"3px 10px",borderRadius:20,border:`0.5px solid ${tagColor(t,allTags)}66`,whiteSpace:"nowrap",
+              background:filterTag===t?tagColor(t,allTags)+"33":"transparent",color:tagColor(t,allTags),fontSize:12,cursor:"pointer",fontWeight:filterTag===t?500:400}}>
+            {t}
+          </button>
+        ))}
+      </div>
+      <div style={{padding:"0 16px 10px",textAlign:"right"}}>
+        <button onClick={()=>setShowManageTags(true)} style={{fontSize:13,color:"#7F77DD",background:"none",border:"0.5px solid #7F77DD66",borderRadius:8,padding:"4px 12px",cursor:"pointer"}}>⚙ {T.manageTagsTitle}</button>
+      </div>
+      <div style={{padding:"0 16px 100px"}}>
+        {filtered.length===0&&<p style={{textAlign:"center",color:"#888",marginTop:40}}>{recipes.length===0?T.noRecipes:T.noResults}</p>}
+        {filtered.map(r=>{
+          const lastDate=r.cookDates&&r.cookDates.length?r.cookDates[r.cookDates.length-1]:null;
+          return(
+            <div key={r.id} style={card} onClick={()=>{setSelected(r);setView("detail")}}>
+              {r.youtubeId?(
+                <img src={YT_THUMB(r.youtubeId)} alt={r.name} style={{width:72,height:52,borderRadius:8,objectFit:"cover",flexShrink:0}}/>
+              ):(
+                <div style={{width:72,height:52,borderRadius:8,background:"#e8e8e0",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🍽️</div>
+              )}
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:15,fontWeight:500,marginBottom:3}}>{r.name}</p>
+                <p style={{fontSize:12,color:"#888",marginBottom:5}}>{T.cookCount(r.cookCount)} · {lastDate?fmt(lastDate):T.never}</p>
+                <div style={{display:"flex",flexWrap:"wrap",gap:4}}>{r.tags.map(t=><TagPill key={t} label={t} color={tagColor(t,allTags)} small/>)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{display:"flex",justifyContent:"center",padding:"16px 0 32px"}}>
+        <button onClick={()=>setShowAdd(true)}
+          style={{width:54,height:54,borderRadius:27,background:"#7F77DD",border:"none",color:"#fff",fontSize:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AddTagInline({allTags,onAdd,T}){
+  const[val,setVal]=useState("");
+  return(
+    <div style={{display:"flex",gap:8,marginTop:14}}>
+      <input placeholder={T.newTag} value={val} onChange={e=>setVal(e.target.value)}
+        onKeyDown={e=>{if(e.key==="Enter"&&val.trim()){onAdd(val.trim());setVal("")}}} style={{flex:1}}/>
+      <button style={{padding:"8px 14px",borderRadius:8,background:"#7F77DD",color:"#fff",border:"none",cursor:"pointer",fontSize:13}}
+        onClick={()=>{if(val.trim()){onAdd(val.trim());setVal("")}}}>{T.addTag}</button>
+    </div>
+  );
+}
+
+function AddEditForm({T,allTags,addGlobalTag,initial,onSave,onCancel,tagColor}){
+  const[url,setUrl]=useState(initial?.youtubeId?`https://www.youtube.com/watch?v=${initial.youtubeId}`:"");
+  const[name,setName]=useState(initial?.name||"");
+  const[nameError,setNameError]=useState(false);
+  const[youtubeId,setYoutubeId]=useState(initial?.youtubeId||null);
+  const[tags,setTags]=useState(initial?.tags||[]);
+  const[note,setNote]=useState(initial?.note||"");
+  const[newTag,setNewTag]=useState("");
+  const[fetching,setFetching]=useState(false);
+
+  const fetchYT=async()=>{
+    const id=YT_ID(url);if(!id)return;
+    setFetching(true);setYoutubeId(id);
+    try{const res=await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`);const data=await res.json();if(data.title)setName(data.title)}catch{}
+    setFetching(false);
+  };
+
+  const addTag=tag=>{if(tag&&!tags.includes(tag)){setTags(t=>[...t,tag]);addGlobalTag(tag)}setNewTag("")};
+
+  const submit=()=>{
+    if(!name.trim()){setNameError(true);return;}
+    setNameError(false);
+    onSave({...(initial||{}),name:name.trim(),youtubeId,tags,note});
+  };
+
+  const hdr={display:"flex",alignItems:"center",justifyContent:"space-between",padding:"max(env(safe-area-inset-top),16px) 16px 12px"};
+
+  return(
+    <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:"#f5f5f0"}}>
+      <div style={hdr}>
+        <button onClick={onCancel} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#7F77DD",padding:0}}>← {T.cancel}</button>
+        <span style={{fontSize:18,fontWeight:500}}>{initial?T.editTitle:T.addTitle}</span>
+        <button onClick={submit} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#7F77DD",fontWeight:600,padding:0}}>{T.save}</button>
+      </div>
+      <div style={{padding:"0 16px 60px",display:"flex",flexDirection:"column",gap:14}}>
+        <div>
+          <label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>{T.youtubeUrl}</label>
+          <div style={{display:"flex",gap:8}}>
+            <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://youtube.com/watch?v=…" style={{flex:1}}/>
+            <button onClick={fetchYT} disabled={fetching} style={{padding:"8px 12px",borderRadius:8,background:"#7F77DD",color:"#fff",border:"none",cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>
+              {fetching?T.fetching:T.fetchInfo}
+            </button>
+          </div>
+        </div>
+        {youtubeId&&<img src={YT_THUMB(youtubeId)} alt="thumb" style={{width:"100%",borderRadius:10,objectFit:"cover",maxHeight:160}}/>}
+        <div>
+          <label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>{T.recipeName}</label>
+          <input value={name} onChange={e=>{setName(e.target.value);setNameError(false);}} placeholder={T.recipeName} style={{borderColor:nameError?"#E24B4A":undefined}}/>
+          {nameError&&<p style={{fontSize:12,color:"#E24B4A",marginTop:4}}>Por favor introduz o nome da receita.</p>}
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>{T.tags}</label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+            {allTags.filter(t=>!tags.includes(t)).map(t=>(
+              <button key={t} onClick={()=>addTag(t)} style={{padding:"3px 10px",borderRadius:20,border:`0.5px solid ${tagColor(t)}66`,background:"transparent",color:tagColor(t),fontSize:12,cursor:"pointer"}}>{t}</button>
+            ))}
+          </div>
+          {tags.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>{tags.map(t=><TagPill key={t} label={t} color={tagColor(t)} onRemove={()=>setTags(ts=>ts.filter(x=>x!==t))}/>)}</div>}
+          <div style={{display:"flex",gap:8}}>
+            <input placeholder={T.newTag} value={newTag} onChange={e=>setNewTag(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&newTag.trim())addTag(newTag.trim())}} style={{flex:1}}/>
+            <button onClick={()=>newTag.trim()&&addTag(newTag.trim())} style={{padding:"8px 12px",borderRadius:8,background:"#7F77DD",color:"#fff",border:"none",cursor:"pointer",fontSize:13}}>{T.addTag}</button>
+          </div>
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>{T.note}</label>
+          <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={T.notePlaceholder} style={{minHeight:72,resize:"vertical"}}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
